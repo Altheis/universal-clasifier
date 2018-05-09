@@ -1,9 +1,11 @@
 import numpy as np
 from keras.models import Sequential, load_model
 from keras.layers import Dense, Dropout
+from keras.optimizers import SGD
 from pathlib import Path
 from tkinter import *
 import os, sys
+
 
 def check_data():
     data=[]
@@ -30,7 +32,17 @@ def normalize(input):
     return output/max
 
 
-def read_data(name):
+def to_classes(arr,out_size):
+    res=np.array([])
+    arr=arr.astype(np.int)
+    for val in arr:
+        vec=np.zeros(out_size)
+        vec[val]=1
+        res=np.append(res,vec)
+    return res
+
+
+def read_data(name,out_size):
     name+='.data'
     data_source = open(name, 'r')
     lines = data_source.read().split('\n')
@@ -41,7 +53,7 @@ def read_data(name):
             values = line.split(',')
             expected = np.append(expected, values[-1])
             dataset = np.append(dataset, values[:-1])
-    return dataset.astype(np.float), normalize(expected[:-1].astype(np.float))
+    return dataset.astype(np.float), to_classes(normalize(expected[:-1].astype(np.float))*(out_size-1),out_size)
 
 
 def read_params(name):
@@ -56,30 +68,42 @@ def read_outs(name):
     return list(filter(None,data_source.read().split('\n')))
 
 
-def train_network(datasource,in_size):
-    x_train, y_train = read_data(datasource)
+def train_network(datasource,in_size, out_size):
+    x_train, y_train = read_data(datasource,out_size)
     x_train = np.reshape(x_train, (-1, in_size))
+    y_train = np.reshape(y_train, (-1, out_size))
 
     model = Sequential()
-    model.add(Dense(64, input_dim=in_size, activation='relu'))
+
+    model.add(Dense(64, activation='relu', input_dim=in_size))
     model.add(Dropout(0.5))
     model.add(Dense(64, activation='relu'))
     model.add(Dropout(0.5))
-    model.add(Dense(1, activation='sigmoid'))
+    model.add(Dense(64, activation='relu'))
+    model.add(Dropout(0.5))
+    model.add(Dense(64, activation='relu'))
+    model.add(Dropout(0.5))
+    model.add(Dense(64, activation='relu'))
+    model.add(Dropout(0.5))
+    model.add(Dense(out_size, activation='softmax'))
 
-    model.compile(loss='binary_crossentropy', optimizer='rmsprop', metrics=['accuracy'])
-    model.fit(x_train, y_train, epochs=500, batch_size=12, verbose=2, validation_split=0.1)
+    sgd = SGD(lr=0.01, decay=1e-6, momentum=0.9, nesterov=True)
+    model.compile(loss='categorical_crossentropy',
+                  optimizer='rmsprop',
+                  metrics=['accuracy'])
+
+    model.fit(x_train, y_train, epochs=100, batch_size=1, verbose=2, validation_split=0.1)
     model.save(datasource+'.hdf5')
     return model
 
 
-def get_model(datasource="source.txt",in_size=1):
+def get_model(datasource="source.txt",in_size=1,out_size=2):
     path=datasource+'.hdf5'
     my_file = Path(path)
     if my_file.is_file():
         return load_model(path)
     else:
-        return train_network(datasource,in_size)
+        return train_network(datasource,in_size,out_size)
 
 
 class interface:
@@ -134,11 +158,9 @@ class interface:
             values = np.append(values, self.textboxes[i].get())
         values = values.astype(np.float)
         values = values.reshape(-1,len(values))
-        result = self.model.predict(values)[0][0]
-        if result < 0.5:
-            self.resultlabel['text'] = self.outs[0]+' with {0:.2f} % probability'.format((1-result)*100)
-        else:
-            self.resultlabel['text'] = self.outs[1]+' with {0:.2f} % probability'.format(result*100)
+        result = self.model.predict(values)[0]
+        resp=np.argmax(result)
+        self.resultlabel['text'] = self.outs[resp] + ' with {0:.2f} % probability'.format(result[resp] * 100)
 
     def restart_program(self):
         python = sys.executable
@@ -151,7 +173,7 @@ class model_picker:
         self.picked=StringVar(root)
         self.detected=check_data()
         self.picked.set(self.detected[0])
-        self.text=Label(root, text='Select data source, make sure there are .data and .params files in the main directory')
+        self.text=Label(root, text='Select data source, make sure there are .data, .outs and .params files in the main directory, as described in readme file.')
         self.text.grid(row=1)
         self.drop=OptionMenu(root, self.picked, *self.detected)
         self.drop.grid(row=2)
@@ -161,7 +183,8 @@ class model_picker:
         params = read_params(self.picked.get())
         params[-1]=params[-1][:-1]
         outs = read_outs(self.picked.get())
-        model = get_model(self.picked.get(),len(params))
+        outs = sorted(outs, key=str.lower)
+        model = get_model(self.picked.get(),len(params),len(outs))
         self.text.destroy()
         self.start.destroy()
         self.drop.destroy()
