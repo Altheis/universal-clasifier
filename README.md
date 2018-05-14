@@ -18,3 +18,9 @@ Order and number of those names should correspond to order of values provided in
 Files used mainly during displaying results of classification.
 Each line corresponds to the text which will be displayed when classifier recognizes data as corresponding class.
 These lines should match possible classes listed in ascending order.
+
+
+
+## todo
+-better model changing
+-handle exceptions durnig reading data from files
