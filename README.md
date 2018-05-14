@@ -22,5 +22,6 @@ These lines should match possible classes listed in ascending order.
 
 
 ## todo
--better model changing
--handle exceptions durnig reading data from files
+better model changing
+handle exceptions durnig reading data from files
+allow user to change network parameters
